@@ -13,15 +13,28 @@ import {
   ExternalLink,
   Zap,
   ArrowLeft,
+  Loader2,
 } from 'lucide-react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
+
+// 자동 발급 지원 서류
+const AUTO_ISSUE_TYPES = [
+  'health_insurance_cert',
+  'pension_cert',
+  'resident_register',
+  'resident_abstract',
+  'income_cert',
+  'local_tax_cert',
+]
 
 export default function CaseDocumentsPage() {
   const params = useParams()
   const caseId = params.id as string
   const queryClient = useQueryClient()
   const [uploadType, setUploadType] = useState<string | null>(null)
+  const [issuingType, setIssuingType] = useState<string | null>(null)
+  const [issueError, setIssueError] = useState<string | null>(null)
 
   const { data: documents, isLoading } = useQuery<RequiredDocument[]>({
     queryKey: ['case-documents', caseId],
@@ -59,6 +72,36 @@ export default function CaseDocumentsPage() {
       setUploadType(null)
     },
   })
+
+  // 자동 발급 mutation
+  const autoIssueMutation = useMutation({
+    mutationFn: async (documentType: string) => {
+      setIssuingType(documentType)
+      setIssueError(null)
+      return api.post(`/api/v1/documents/auto-issue/${caseId}/${documentType}`, {
+        cert_type: 'KAKAO',
+      })
+    },
+    onSuccess: (response) => {
+      if (response.data.success) {
+        queryClient.invalidateQueries({ queryKey: ['case-documents', caseId] })
+        alert(`${response.data.message}`)
+      } else {
+        setIssueError(response.data.message)
+      }
+      setIssuingType(null)
+    },
+    onError: (error: any) => {
+      setIssueError(error.response?.data?.detail || '자동 발급 실패')
+      setIssuingType(null)
+    },
+  })
+
+  const handleAutoIssue = (documentType: string) => {
+    if (confirm('카카오 인증을 통해 서류를 자동 발급하시겠습니까?')) {
+      autoIssueMutation.mutate(documentType)
+    }
+  }
 
   const handleFileUpload = (documentType: string, file: File) => {
     uploadMutation.mutate({ documentType, file })
