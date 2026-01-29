@@ -44,13 +44,17 @@ class HyphenService:
         "income_cert": "/v1/nts/income",                      # 소득금액증명원
     }
 
-    def __init__(self):
+    def __init__(self, test_mode: bool = True):
         """
         Hyphen API 초기화
+
+        Args:
+            test_mode: 테스트베드 모드 (기본값 True)
         """
         self.user_id = settings.HYPHEN_CLIENT_ID
         self.hkey = settings.HYPHEN_API_KEY
         self.ekey = getattr(settings, 'HYPHEN_EKEY', '')  # 암호화 키
+        self.test_mode = test_mode  # 테스트베드 모드
         self._access_token: Optional[str] = None
         self._token_expires_at: Optional[datetime] = None
 
@@ -129,7 +133,7 @@ class HyphenService:
         self,
         endpoint: str,
         data: Dict[str, Any],
-        use_legacy_auth: bool = False,
+        use_legacy_auth: bool = True,  # Hyphen은 기본적으로 legacy auth 사용
     ) -> Dict[str, Any]:
         """
         Hyphen API 요청
@@ -137,28 +141,36 @@ class HyphenService:
         Args:
             endpoint: API 엔드포인트
             data: 요청 데이터
-            use_legacy_auth: 기존 인증 방식 사용 여부
+            use_legacy_auth: 기존 인증 방식 사용 여부 (기본값 True)
 
         Returns:
             API 응답
         """
         url = f"{self.BASE_URL}{endpoint}"
 
-        if use_legacy_auth:
-            headers = {
-                "Content-Type": "application/json",
-                "user-id": self.user_id,
-                "hkey": self.hkey,
-            }
-        else:
+        # 기본 헤더 설정
+        headers = {
+            "Content-Type": "application/json",
+            "user-id": self.user_id,
+            "Hkey": self.hkey,
+        }
+
+        # 테스트베드 모드일 경우 헤더 추가
+        if self.test_mode:
+            headers["hyphen-gustation"] = "test"
+
+        if not use_legacy_auth:
             token = await self._get_access_token()
-            headers = {
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {token}",
-            }
+            headers["Authorization"] = f"Bearer {token}"
 
         async with httpx.AsyncClient(timeout=60.0) as client:
             response = await client.post(url, headers=headers, json=data)
+
+            # 응답 로깅 (디버그용)
+            print(f"[Hyphen API] {endpoint}")
+            print(f"  Status: {response.status_code}")
+            print(f"  Response: {response.text[:500] if response.text else 'No content'}")
+
             response.raise_for_status()
             return response.json()
 

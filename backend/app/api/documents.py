@@ -427,3 +427,40 @@ async def get_supported_auto_issue_documents(
         "cert_types": ["KAKAO", "PASS", "NAVER", "PAYCO", "KB"],
         "telecoms": ["SKT", "KT", "LGU", "SKT_MVNO", "KT_MVNO", "LGU_MVNO"],
     }
+
+
+@router.get("/auto-issue/test")
+async def test_hyphen_connection(
+    current_user: User = Depends(get_current_user)
+):
+    """Hyphen API 연결 테스트"""
+    # API 설정 확인
+    config_status = {
+        "user_id": bool(settings.HYPHEN_CLIENT_ID),
+        "api_key": bool(settings.HYPHEN_API_KEY),
+        "ekey": bool(getattr(settings, 'HYPHEN_EKEY', '')),
+    }
+
+    if not all(config_status.values()):
+        return {
+            "success": False,
+            "message": "Hyphen API 설정이 불완전합니다",
+            "config_status": config_status,
+            "help": ".env 파일에 HYPHEN_CLIENT_ID, HYPHEN_API_KEY, HYPHEN_EKEY를 설정하세요",
+        }
+
+    # 사업자등록상태 조회 테스트 (인증 불필요)
+    try:
+        result = await hyphen_service.get_business_status("1234567890")
+        return {
+            "success": True,
+            "message": "Hyphen API 연결 성공",
+            "test_mode": hyphen_service.test_mode,
+            "test_result": result,
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"API 호출 실패: {str(e)}",
+            "test_mode": hyphen_service.test_mode,
+        }

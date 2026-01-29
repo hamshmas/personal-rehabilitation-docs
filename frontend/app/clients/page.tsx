@@ -186,7 +186,15 @@ function ClientModal({
       }
       onSuccess()
     } catch (err: any) {
-      setError(err.response?.data?.detail || '저장에 실패했습니다')
+      const detail = err.response?.data?.detail
+      if (Array.isArray(detail)) {
+        // 유효성 검증 오류 배열 처리
+        setError(detail.map((e: any) => e.msg || e.message || JSON.stringify(e)).join(', '))
+      } else if (typeof detail === 'object') {
+        setError(JSON.stringify(detail))
+      } else {
+        setError(detail || '저장에 실패했습니다')
+      }
     } finally {
       setLoading(false)
     }
