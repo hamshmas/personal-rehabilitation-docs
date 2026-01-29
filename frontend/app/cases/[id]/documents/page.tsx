@@ -35,6 +35,8 @@ export default function CaseDocumentsPage() {
   const [uploadType, setUploadType] = useState<string | null>(null)
   const [issuingType, setIssuingType] = useState<string | null>(null)
   const [issueError, setIssueError] = useState<string | null>(null)
+  const [showAuthModal, setShowAuthModal] = useState(false)
+  const [pendingDocType, setPendingDocType] = useState<string | null>(null)
 
   const { data: documents, isLoading } = useQuery<RequiredDocument[]>({
     queryKey: ['case-documents', caseId],
@@ -45,6 +47,16 @@ export default function CaseDocumentsPage() {
   const { data: caseData } = useQuery({
     queryKey: ['case', caseId],
     queryFn: () => api.get(`/api/v1/cases/${caseId}`).then((res) => res.data),
+  })
+
+  // 의뢰인 인증서 상태 조회
+  const { data: certStatus } = useQuery({
+    queryKey: ['client-certificate', caseData?.client_id],
+    queryFn: () =>
+      caseData?.client_id
+        ? api.get(`/api/v1/clients/${caseData.client_id}/certificate`).then((res) => res.data)
+        : null,
+    enabled: !!caseData?.client_id,
   })
 
   const uploadMutation = useMutation({
@@ -75,11 +87,12 @@ export default function CaseDocumentsPage() {
 
   // 자동 발급 mutation
   const autoIssueMutation = useMutation({
-    mutationFn: async (documentType: string) => {
+    mutationFn: async ({ documentType, useCertificate }: { documentType: string; useCertificate: boolean }) => {
       setIssuingType(documentType)
       setIssueError(null)
       return api.post(`/api/v1/documents/auto-issue/${caseId}/${documentType}`, {
-        cert_type: 'KAKAO',
+        cert_type: useCertificate ? 'CERT' : 'KAKAO',
+        use_certificate: useCertificate,
       })
     },
     onSuccess: (response) => {
@@ -90,16 +103,33 @@ export default function CaseDocumentsPage() {
         setIssueError(response.data.message)
       }
       setIssuingType(null)
+      setShowAuthModal(false)
+      setPendingDocType(null)
     },
     onError: (error: any) => {
       setIssueError(error.response?.data?.detail || '자동 발급 실패')
       setIssuingType(null)
+      setShowAuthModal(false)
+      setPendingDocType(null)
     },
   })
 
   const handleAutoIssue = (documentType: string) => {
-    if (confirm('카카오 인증을 통해 서류를 자동 발급하시겠습니까?')) {
-      autoIssueMutation.mutate(documentType)
+    // 인증서가 등록되어 있으면 인증 방식 선택 모달 표시
+    if (certStatus?.has_certificate && !certStatus?.is_expired) {
+      setPendingDocType(documentType)
+      setShowAuthModal(true)
+    } else {
+      // 인증서 없으면 바로 카카오 인증으로 진행
+      if (confirm('카카오 인증을 통해 서류를 자동 발급하시겠습니까?')) {
+        autoIssueMutation.mutate({ documentType, useCertificate: false })
+      }
+    }
+  }
+
+  const handleAuthMethodSelect = (useCertificate: boolean) => {
+    if (pendingDocType) {
+      autoIssueMutation.mutate({ documentType: pendingDocType, useCertificate })
     }
   }
 
@@ -250,6 +280,62 @@ export default function CaseDocumentsPage() {
             </div>
           )}
         </div>
+
+        {/* 인증 방식 선택 모달 */}
+        {showAuthModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl max-w-md w-full p-6">
+              <h3 className="text-lg font-bold mb-4">인증 방식 선택</h3>
+              <p className="text-sm text-gray-600 mb-4">
+                서류 자동 발급에 사용할 인증 방식을 선택하세요.
+              </p>
+
+              <div className="space-y-3">
+                <button
+                  onClick={() => handleAuthMethodSelect(true)}
+                  disabled={issuingType !== null}
+                  className="w-full p-4 border-2 border-green-200 rounded-lg hover:bg-green-50 text-left transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+                      <Zap className="h-5 w-5 text-green-600" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-green-800">공동인증서</p>
+                      <p className="text-sm text-gray-500">등록된 인증서로 즉시 발급</p>
+                    </div>
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => handleAuthMethodSelect(false)}
+                  disabled={issuingType !== null}
+                  className="w-full p-4 border-2 border-yellow-200 rounded-lg hover:bg-yellow-50 text-left transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-yellow-100 rounded-full flex items-center justify-center">
+                      <Zap className="h-5 w-5 text-yellow-600" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-yellow-800">카카오 인증</p>
+                      <p className="text-sm text-gray-500">의뢰인 휴대폰에서 인증 승인 필요</p>
+                    </div>
+                  </div>
+                </button>
+              </div>
+
+              <button
+                onClick={() => {
+                  setShowAuthModal(false)
+                  setPendingDocType(null)
+                }}
+                className="mt-4 w-full btn btn-secondary"
+              >
+                취소
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </DashboardLayout>
   )

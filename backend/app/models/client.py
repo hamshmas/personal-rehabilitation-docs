@@ -25,6 +25,12 @@ class Client(Base):
     # Codef Connected ID (계정 연동 시)
     codef_connected_id = Column(String(255), nullable=True)
 
+    # 공동인증서 정보 (암호화 저장)
+    cert_der2pem_enc = Column(Text, nullable=True)  # 암호화된 인증서 (DER2PEM)
+    cert_key2pem_enc = Column(Text, nullable=True)  # 암호화된 개인키 (KEY2PEM)
+    cert_subject = Column(String(255), nullable=True)  # 인증서 주체 (이름)
+    cert_valid_until = Column(DateTime(timezone=True), nullable=True)  # 인증서 만료일
+
     memo = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { Client, PaginatedResponse } from '@/lib/types'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
-import { Plus, Search, Edit, Trash2 } from 'lucide-react'
+import { Plus, Search, Edit, Trash2, ShieldCheck, Upload } from 'lucide-react'
 import Link from 'next/link'
 
 export default function ClientsPage() {
@@ -13,6 +13,8 @@ export default function ClientsPage() {
   const [search, setSearch] = useState('')
   const [showModal, setShowModal] = useState(false)
   const [editingClient, setEditingClient] = useState<Client | null>(null)
+  const [showCertModal, setShowCertModal] = useState(false)
+  const [certClient, setCertClient] = useState<Client | null>(null)
 
   const { data, isLoading } = useQuery<PaginatedResponse<Client>>({
     queryKey: ['clients', { search }],
@@ -108,6 +110,16 @@ export default function ClientsPage() {
                         <div className="flex gap-2">
                           <button
                             onClick={() => {
+                              setCertClient(client)
+                              setShowCertModal(true)
+                            }}
+                            className="p-1 text-gray-500 hover:text-green-600"
+                            title="공동인증서 관리"
+                          >
+                            <ShieldCheck className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => {
                               setEditingClient(client)
                               setShowModal(true)
                             }}
@@ -146,6 +158,14 @@ export default function ClientsPage() {
               setShowModal(false)
               queryClient.invalidateQueries({ queryKey: ['clients'] })
             }}
+          />
+        )}
+
+        {/* 공동인증서 관리 모달 */}
+        {showCertModal && certClient && (
+          <CertificateModal
+            client={certClient}
+            onClose={() => setShowCertModal(false)}
           />
         )}
       </div>
@@ -307,6 +327,183 @@ function ClientModal({
                 className="flex-1 btn btn-primary disabled:opacity-50"
               >
                 {loading ? '저장 중...' : '저장'}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function CertificateModal({
+  client,
+  onClose,
+}: {
+  client: Client
+  onClose: () => void
+}) {
+  const [certFile, setCertFile] = useState<File | null>(null)
+  const [certPassword, setCertPassword] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
+
+  // 인증서 상태 조회
+  const { data: certStatus, refetch } = useQuery({
+    queryKey: ['certificate', client.id],
+    queryFn: () =>
+      api.get(`/api/v1/clients/${client.id}/certificate`).then((res) => res.data),
+  })
+
+  const handleUpload = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!certFile || !certPassword) {
+      setError('인증서 파일과 비밀번호를 입력해주세요')
+      return
+    }
+
+    setLoading(true)
+    setError('')
+    setSuccess('')
+
+    try {
+      const formData = new FormData()
+      formData.append('cert_file', certFile)
+      formData.append('cert_password', certPassword)
+
+      const response = await api.post(
+        `/api/v1/clients/${client.id}/certificate`,
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        }
+      )
+
+      if (response.data.success) {
+        setSuccess('인증서가 등록되었습니다')
+        setCertFile(null)
+        setCertPassword('')
+        refetch()
+      } else {
+        setError(response.data.message || '인증서 등록 실패')
+      }
+    } catch (err: any) {
+      setError(err.response?.data?.detail || '인증서 등록 중 오류가 발생했습니다')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!confirm('등록된 인증서를 삭제하시겠습니까?')) return
+
+    try {
+      await api.delete(`/api/v1/clients/${client.id}/certificate`)
+      setSuccess('인증서가 삭제되었습니다')
+      refetch()
+    } catch (err: any) {
+      setError(err.response?.data?.detail || '인증서 삭제 실패')
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+        <div className="p-6">
+          <h2 className="text-xl font-bold mb-4">
+            공동인증서 관리 - {client.name}
+          </h2>
+
+          {/* 현재 인증서 상태 */}
+          <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+            <h3 className="font-medium mb-2">인증서 상태</h3>
+            {certStatus?.has_certificate ? (
+              <div className="space-y-1">
+                <p className="text-sm">
+                  <span className="text-gray-500">소유자:</span>{' '}
+                  <span className="font-medium">{certStatus.cert_subject}</span>
+                </p>
+                <p className="text-sm">
+                  <span className="text-gray-500">만료일:</span>{' '}
+                  <span className={certStatus.is_expired ? 'text-red-600' : ''}>
+                    {new Date(certStatus.cert_valid_until).toLocaleDateString('ko-KR')}
+                    {certStatus.is_expired && ' (만료됨)'}
+                  </span>
+                </p>
+                <button
+                  onClick={handleDelete}
+                  className="mt-2 text-sm text-red-600 hover:underline"
+                >
+                  인증서 삭제
+                </button>
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500">등록된 인증서가 없습니다</p>
+            )}
+          </div>
+
+          {error && (
+            <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm">
+              {error}
+            </div>
+          )}
+
+          {success && (
+            <div className="mb-4 p-3 bg-green-50 text-green-700 rounded-lg text-sm">
+              {success}
+            </div>
+          )}
+
+          {/* 인증서 업로드 폼 */}
+          <form onSubmit={handleUpload} className="space-y-4">
+            <div>
+              <label className="label">인증서 파일 (.pfx, .p12)</label>
+              <input
+                type="file"
+                accept=".pfx,.p12"
+                onChange={(e) => setCertFile(e.target.files?.[0] || null)}
+                className="input"
+              />
+            </div>
+
+            <div>
+              <label className="label">인증서 비밀번호</label>
+              <input
+                type="password"
+                value={certPassword}
+                onChange={(e) => setCertPassword(e.target.value)}
+                className="input"
+                placeholder="인증서 비밀번호를 입력하세요"
+              />
+              <p className="mt-1 text-xs text-gray-500">
+                비밀번호는 인증서 검증에만 사용되며 저장되지 않습니다
+              </p>
+            </div>
+
+            <div className="flex gap-3 pt-4">
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex-1 btn btn-secondary"
+              >
+                닫기
+              </button>
+              <button
+                type="submit"
+                disabled={loading || !certFile || !certPassword}
+                className="flex-1 btn btn-primary disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {loading ? (
+                  '등록 중...'
+                ) : (
+                  <>
+                    <Upload className="h-4 w-4" />
+                    인증서 등록
+                  </>
+                )}
               </button>
             </div>
           </form>

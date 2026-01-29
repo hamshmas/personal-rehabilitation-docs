@@ -174,15 +174,42 @@ class HyphenService:
             response.raise_for_status()
             return response.json()
 
+    # ========== 공동인증서 인증 지원 ==========
+
+    def _add_certificate_auth(
+        self,
+        data: Dict[str, Any],
+        der2pem: Optional[str] = None,
+        key2pem: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        요청 데이터에 공동인증서 인증 정보 추가
+
+        Args:
+            data: 기존 요청 데이터
+            der2pem: Base64 인코딩된 인증서
+            key2pem: Base64 인코딩된 개인키
+
+        Returns:
+            인증서 정보가 추가된 요청 데이터
+        """
+        if der2pem and key2pem:
+            data["certType"] = "CERT"  # 공동인증서 인증
+            data["der2Pem"] = der2pem
+            data["key2Pem"] = key2pem
+        return data
+
     # ========== 정부24 주민등록 ==========
 
     async def get_resident_copy(
         self,
         name: str,
         resident_number: str,
-        cert_type: str = "KAKAO",  # KAKAO, PASS, PAYCO, KB, NAVER 등
+        cert_type: str = "KAKAO",  # KAKAO, PASS, PAYCO, KB, NAVER, CERT 등
         phone_number: Optional[str] = None,
         telecom: Optional[str] = None,  # SKT, KT, LGU, SKT_MVNO, KT_MVNO, LGU_MVNO
+        der2pem: Optional[str] = None,  # 공동인증서 인증서
+        key2pem: Optional[str] = None,  # 공동인증서 개인키
     ) -> Dict[str, Any]:
         """
         주민등록등본 조회/발급
@@ -190,9 +217,11 @@ class HyphenService:
         Args:
             name: 성명
             resident_number: 주민등록번호 (암호화됨)
-            cert_type: 인증 방식
+            cert_type: 인증 방식 (KAKAO, PASS, NAVER, CERT 등)
             phone_number: 휴대폰 번호
             telecom: 통신사
+            der2pem: 공동인증서 (cert_type이 CERT일 때 필수)
+            key2pem: 공동인증서 개인키 (cert_type이 CERT일 때 필수)
 
         Returns:
             주민등록등본 정보
@@ -207,6 +236,9 @@ class HyphenService:
         if telecom:
             data["telecom"] = telecom
 
+        # 공동인증서 인증 정보 추가
+        data = self._add_certificate_auth(data, der2pem, key2pem)
+
         return await self._request(self.ENDPOINTS["resident_copy"], data)
 
     async def get_resident_abstract(
@@ -216,6 +248,8 @@ class HyphenService:
         cert_type: str = "KAKAO",
         phone_number: Optional[str] = None,
         telecom: Optional[str] = None,
+        der2pem: Optional[str] = None,
+        key2pem: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         주민등록초본 조회/발급
@@ -230,6 +264,7 @@ class HyphenService:
         if telecom:
             data["telecom"] = telecom
 
+        data = self._add_certificate_auth(data, der2pem, key2pem)
         return await self._request(self.ENDPOINTS["resident_abstract"], data)
 
     # ========== 정부24 증명서 ==========
@@ -239,6 +274,8 @@ class HyphenService:
         name: str,
         resident_number: str,
         cert_type: str = "KAKAO",
+        der2pem: Optional[str] = None,
+        key2pem: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         지방세 납세증명서 발급
@@ -248,6 +285,7 @@ class HyphenService:
             "jumin": self.encrypt_data(resident_number),
             "certType": cert_type,
         }
+        data = self._add_certificate_auth(data, der2pem, key2pem)
         return await self._request(self.ENDPOINTS["local_tax"], data)
 
     async def get_vehicle_registration(
@@ -256,6 +294,8 @@ class HyphenService:
         resident_number: str,
         vehicle_number: str,
         cert_type: str = "KAKAO",
+        der2pem: Optional[str] = None,
+        key2pem: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         자동차등록원부 조회
@@ -266,6 +306,7 @@ class HyphenService:
             "carNo": vehicle_number,
             "certType": cert_type,
         }
+        data = self._add_certificate_auth(data, der2pem, key2pem)
         return await self._request(self.ENDPOINTS["vehicle"], data)
 
     # ========== 건강보험공단 ==========
@@ -275,6 +316,8 @@ class HyphenService:
         name: str,
         resident_number: str,
         cert_type: str = "KAKAO",
+        der2pem: Optional[str] = None,
+        key2pem: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         건강보험 자격득실확인서 조회
@@ -284,6 +327,7 @@ class HyphenService:
             "jumin": self.encrypt_data(resident_number),
             "certType": cert_type,
         }
+        data = self._add_certificate_auth(data, der2pem, key2pem)
         return await self._request(self.ENDPOINTS["nhis_qualification"], data)
 
     async def get_health_insurance_payment(
@@ -293,6 +337,8 @@ class HyphenService:
         start_date: str,
         end_date: str,
         cert_type: str = "KAKAO",
+        der2pem: Optional[str] = None,
+        key2pem: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         건강보험료 납부내역 조회
@@ -308,6 +354,7 @@ class HyphenService:
             "endDate": end_date,
             "certType": cert_type,
         }
+        data = self._add_certificate_auth(data, der2pem, key2pem)
         return await self._request(self.ENDPOINTS["nhis_payment"], data)
 
     # ========== 국민연금공단 ==========
@@ -317,6 +364,8 @@ class HyphenService:
         name: str,
         resident_number: str,
         cert_type: str = "KAKAO",
+        der2pem: Optional[str] = None,
+        key2pem: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         국민연금 가입내역 조회
@@ -326,6 +375,7 @@ class HyphenService:
             "jumin": self.encrypt_data(resident_number),
             "certType": cert_type,
         }
+        data = self._add_certificate_auth(data, der2pem, key2pem)
         return await self._request(self.ENDPOINTS["nps_status"], data)
 
     # ========== 고용보험 ==========
@@ -335,6 +385,8 @@ class HyphenService:
         name: str,
         resident_number: str,
         cert_type: str = "KAKAO",
+        der2pem: Optional[str] = None,
+        key2pem: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         고용보험 가입내역 조회
@@ -344,6 +396,7 @@ class HyphenService:
             "jumin": self.encrypt_data(resident_number),
             "certType": cert_type,
         }
+        data = self._add_certificate_auth(data, der2pem, key2pem)
         return await self._request(self.ENDPOINTS["ei_status"], data)
 
     # ========== 대법원 등기 ==========
@@ -391,6 +444,8 @@ class HyphenService:
         resident_number: str,
         year: str,
         cert_type: str = "KAKAO",
+        der2pem: Optional[str] = None,
+        key2pem: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         소득금액증명원 발급
@@ -404,4 +459,5 @@ class HyphenService:
             "year": year,
             "certType": cert_type,
         }
+        data = self._add_certificate_auth(data, der2pem, key2pem)
         return await self._request(self.ENDPOINTS["income_cert"], data)

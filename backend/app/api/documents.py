@@ -240,9 +240,10 @@ hyphen_service = HyphenService()
 
 class AutoIssueRequest(BaseModel):
     """자동 발급 요청"""
-    cert_type: str = "KAKAO"  # KAKAO, PASS, NAVER 등
+    cert_type: str = "KAKAO"  # KAKAO, PASS, NAVER, CERT(공동인증서) 등
     phone_number: Optional[str] = None
     telecom: Optional[str] = None  # SKT, KT, LGU
+    use_certificate: bool = False  # 공동인증서 사용 여부
 
 
 class AutoIssueResponse(BaseModel):
@@ -298,6 +299,36 @@ async def auto_issue_document(
     except Exception:
         raise HTTPException(status_code=400, detail="주민등록번호 복호화 실패")
 
+    # 공동인증서 정보 준비
+    der2pem = None
+    key2pem = None
+    cert_type = request.cert_type
+
+    if request.use_certificate:
+        # 공동인증서 사용 시 인증서 정보 확인
+        if not client.cert_der2pem_enc or not client.cert_key2pem_enc:
+            raise HTTPException(
+                status_code=400,
+                detail="의뢰인의 공동인증서가 등록되지 않았습니다. 먼저 인증서를 등록해주세요."
+            )
+
+        # 인증서 만료 확인
+        if client.cert_valid_until:
+            from datetime import timezone
+            if datetime.now(timezone.utc) > client.cert_valid_until:
+                raise HTTPException(
+                    status_code=400,
+                    detail="공동인증서가 만료되었습니다. 새 인증서를 등록해주세요."
+                )
+
+        # 인증서 정보 복호화
+        try:
+            der2pem = decrypt_sensitive_data(client.cert_der2pem_enc)
+            key2pem = decrypt_sensitive_data(client.cert_key2pem_enc)
+            cert_type = "CERT"  # 공동인증서 인증 타입으로 변경
+        except Exception:
+            raise HTTPException(status_code=400, detail="인증서 정보 복호화 실패")
+
     # Hyphen API 호출
     try:
         api_response = None
@@ -306,29 +337,37 @@ async def auto_issue_document(
             api_response = await hyphen_service.get_health_insurance_status(
                 name=client.name,
                 resident_number=resident_number,
-                cert_type=request.cert_type,
+                cert_type=cert_type,
+                der2pem=der2pem,
+                key2pem=key2pem,
             )
         elif document_type == DocumentType.PENSION_CERT:
             api_response = await hyphen_service.get_national_pension_status(
                 name=client.name,
                 resident_number=resident_number,
-                cert_type=request.cert_type,
+                cert_type=cert_type,
+                der2pem=der2pem,
+                key2pem=key2pem,
             )
         elif document_type == DocumentType.RESIDENT_REGISTER:
             api_response = await hyphen_service.get_resident_copy(
                 name=client.name,
                 resident_number=resident_number,
-                cert_type=request.cert_type,
+                cert_type=cert_type,
                 phone_number=request.phone_number,
                 telecom=request.telecom,
+                der2pem=der2pem,
+                key2pem=key2pem,
             )
         elif document_type == DocumentType.RESIDENT_ABSTRACT:
             api_response = await hyphen_service.get_resident_abstract(
                 name=client.name,
                 resident_number=resident_number,
-                cert_type=request.cert_type,
+                cert_type=cert_type,
                 phone_number=request.phone_number,
                 telecom=request.telecom,
+                der2pem=der2pem,
+                key2pem=key2pem,
             )
         elif document_type == DocumentType.INCOME_CERT:
             current_year = str(datetime.now().year - 1)
@@ -336,13 +375,17 @@ async def auto_issue_document(
                 name=client.name,
                 resident_number=resident_number,
                 year=current_year,
-                cert_type=request.cert_type,
+                cert_type=cert_type,
+                der2pem=der2pem,
+                key2pem=key2pem,
             )
         elif document_type == DocumentType.LOCAL_TAX_CERT:
             api_response = await hyphen_service.get_local_tax_certificate(
                 name=client.name,
                 resident_number=resident_number,
-                cert_type=request.cert_type,
+                cert_type=cert_type,
+                der2pem=der2pem,
+                key2pem=key2pem,
             )
         else:
             raise HTTPException(
@@ -424,7 +467,8 @@ async def get_supported_auto_issue_documents(
     ]
     return {
         "supported_documents": supported,
-        "cert_types": ["KAKAO", "PASS", "NAVER", "PAYCO", "KB"],
+        "cert_types": ["KAKAO", "PASS", "NAVER", "PAYCO", "KB", "CERT"],
+        "cert_note": "CERT는 공동인증서 인증 (의뢰인에 인증서 등록 필요)",
         "telecoms": ["SKT", "KT", "LGU", "SKT_MVNO", "KT_MVNO", "LGU_MVNO"],
     }
 
