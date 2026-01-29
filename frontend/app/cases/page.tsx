@@ -201,7 +201,14 @@ function CaseModal({
       })
       onSuccess()
     } catch (err: any) {
-      setError(err.response?.data?.detail || '저장에 실패했습니다')
+      const detail = err.response?.data?.detail
+      if (Array.isArray(detail)) {
+        setError(detail.map((e: any) => e.msg || e.message || JSON.stringify(e)).join(', '))
+      } else if (typeof detail === 'object') {
+        setError(JSON.stringify(detail))
+      } else {
+        setError(detail || '저장에 실패했습니다')
+      }
     } finally {
       setLoading(false)
     }

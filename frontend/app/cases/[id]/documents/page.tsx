@@ -157,6 +157,13 @@ export default function CaseDocumentsPage() {
           </div>
         </div>
 
+        {/* 에러 메시지 */}
+        {issueError && (
+          <div className="card bg-red-50 border-red-200">
+            <p className="text-red-700 text-sm">{issueError}</p>
+          </div>
+        )}
+
         {/* 서류 목록 */}
         <div className="card">
           <h2 className="text-lg font-semibold mb-4">필요 서류 목록</h2>
@@ -194,6 +201,21 @@ export default function CaseDocumentsPage() {
                   <div className="flex items-center gap-2">
                     {doc.status !== 'completed' && (
                       <>
+                        {/* 자동발급 버튼 */}
+                        {AUTO_ISSUE_TYPES.includes(doc.document_type) && (
+                          <button
+                            onClick={() => handleAutoIssue(doc.document_type)}
+                            disabled={issuingType === doc.document_type}
+                            className="btn btn-secondary text-sm flex items-center gap-1 bg-yellow-50 border-yellow-300 text-yellow-700 hover:bg-yellow-100"
+                          >
+                            {issuingType === doc.document_type ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Zap className="h-4 w-4" />
+                            )}
+                            자동발급
+                          </button>
+                        )}
                         {doc.issue_url && (
                           <a
                             href={doc.issue_url}
